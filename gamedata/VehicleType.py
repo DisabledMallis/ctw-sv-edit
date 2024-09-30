@@ -79,7 +79,7 @@ class VehicleType(IntEnum):
     GangBurritoReservedA = 75
     GangBurritoReservedB = 76
     GangBurritoReservedC = 77
-    GangBurritoF = 78
+    SpanishLordsBurrito = 78
     GangBurritoG = 79
     GangBurritoH = 80
     KoreanChavos = 81
