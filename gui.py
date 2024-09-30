@@ -8,6 +8,12 @@ class SlotProperties:
     weapon_type = binding.BindableProperty()
     weapon_ammos = binding.BindableProperty()
 
+class GarageProperties:
+    garage_id = binding.BindableProperty()
+    garage_vehicle_id = binding.BindableProperty()
+    car_rot_forward = binding.BindableProperty()
+    car_proof = binding.BindableProperty()
+
 class SaveProperties:
     money = binding.BindableProperty()
     health = binding.BindableProperty()
@@ -15,9 +21,14 @@ class SaveProperties:
 
     weapons = []
 
+    current_safehouse = binding.BindableProperty()
+    garages = []
+
     def __init__(self):
         for i in range(0, 11):
             self.weapons.append(SlotProperties())
+        for i in range(0, 21):
+            self.garages.append(GarageProperties())
 
     def load(self, save: savedata.SaveData):
         self.money = save.mMoney
@@ -26,15 +37,27 @@ class SaveProperties:
         for i in range(0, 11):
             self.weapons[i].weapon_type = save.mWeaponTypes[i]
             self.weapons[i].weapon_ammos = save.mWeaponAmmos[i]
+        self.current_safehouse = save.mCurrentSafehouse
+        for i in range(0, 21):
+            self.garages[i].garage_id = save.mGarageId[i]
+            self.garages[i].garage_vehicle_id = save.mGarageVehicleId[i]
+            self.garages[i].car_rot_forward = save.mGarageCarRotForward[i]
+            self.garages[i].car_proof = save.mGarageCarProof[i]
 
     def save(self):
         global active_save
-        active_save.mMoney = self.money
+        active_save.mMoney = int(self.money)
         active_save.mHealth = int((self.health / 100.0) * 127)
         active_save.mArmor = int((self.armor / 100.0) * 127)
         for i in range(0, 11):
             active_save.mWeaponTypes[i] = int(self.weapons[i].weapon_type)
             active_save.mWeaponAmmos[i] = int(self.weapons[i].weapon_ammos)
+        active_save.mCurrentSafehouse = int(self.current_safehouse)
+        for i in range(0, 21):
+            active_save.mGarageId[i] = int(self.garages[i].garage_id)
+            active_save.mGarageVehicleId[i] = int(self.garages[i].garage_vehicle_id)
+            active_save.mGarageCarRotForward[i] = int(self.garages[i].car_rot_forward)
+            active_save.mGarageCarProof[i] = int(self.garages[i].car_proof)
 
 save_props = SaveProperties()
 
@@ -55,6 +78,7 @@ def run_gui():
     with ui.tabs().classes('w-full') as tabs:
         info = ui.tab('Info')
         player = ui.tab('Player')
+        world = ui.tab('World')
 
     with ui.tab_panels(tabs, value=info).classes('w-full'):
         with ui.tab_panel(info):
@@ -89,5 +113,15 @@ def run_gui():
                     ui.label(f"Slot {i}")
                     weapon_select = ui.select({j.value: j.name for j in WeaponType}).bind_value(save_props.weapons[i], 'weapon_type')
                     ui.number(label="Ammo").bind_value(save_props.weapons[i], 'weapon_ammos')
+
+        with ui.tab_panel(world):
+            ui.number(label="Current Safehouse").bind_value(save_props, 'current_safehouse')
+            for i in range(0, 21):
+                with ui.row():
+                    ui.label(f"Garage #{i}")
+                    ui.number(label="Garage ID").bind_value(save_props.garages[i], 'garage_id')
+                    ui.number(label="Vehicle ID").bind_value(save_props.garages[i], 'garage_vehicle_id')
+                    ui.switch("Rotate Forward?").bind_value(save_props.garages[i], 'car_rot_forward')
+                    ui.switch("Car Proof?").bind_value(save_props.garages[i], 'car_proof')
 
     ui.run()

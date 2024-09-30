@@ -10,7 +10,8 @@ data_dir = "data/"
 backups_dir = data_dir + "backups/"
 exports_dir = data_dir + "patched/"
 
-SAVE_HEADER_OFFSET = 0
+SAVE_STRUCT_SIZE = 0xDB0
+SAVE_HEADER_OFFSET = 1
 SAVE_HEADER_SIZE = 0x44
 SAVE_CODE_OFFSET = SAVE_HEADER_OFFSET + SAVE_HEADER_SIZE
 SAVE_CODE_SIZE = 0x194
@@ -73,28 +74,28 @@ def split_save(slot):
     savefile = backup + f"savegame{slot}.dat"
 
     print(f"Splitting save '{savefile}'...")
-    print(f"Save struct size {0xDB0}")
-    print(f"\theader {0x44}")
-    print(f"\tcode {0x194}")
-    print(f"\tstats {0x2a0}")
-    print(f"\tscript {0x938}")
+    print(f"Save struct size {SAVE_STRUCT_SIZE}")
+    print(f"\theader {SAVE_HEADER_SIZE}")
+    print(f"\tcode {SAVE_CODE_SIZE}")
+    print(f"\tstats {SAVE_STATS_SIZE}")
+    print(f"\tscript {SAVE_SCRIPTS_SIZE}")
 
     with open(savefile, 'rb') as sf:
         # Dump header
         with open(savefile + ".header", 'wb') as sw:
-            for i in range(0, 0x44):
+            for i in range(0, SAVE_HEADER_SIZE):
                 sw.write(sf.read(1))
         # Dump code
         with open(savefile + ".code", 'wb') as sw:
-            for i in range(0, 0x194):
+            for i in range(0, SAVE_CODE_SIZE):
                 sw.write(sf.read(1))
         # Dump stats
         with open(savefile + ".stats", 'wb') as sw:
-            for i in range(0, 0x2A0):
+            for i in range(0, SAVE_STATS_SIZE):
                 sw.write(sf.read(1))
         # Dump script
         with open(savefile + ".script", 'wb') as sw:
-            for i in range(0, 0x938):
+            for i in range(0, SAVE_SCRIPTS_SIZE):
                 sw.write(sf.read(1))
 class SaveData:
     mVersionStr: str = ""
@@ -106,6 +107,12 @@ class SaveData:
 
     mWeaponTypes: list(WeaponType) = []
     mWeaponAmmos: list = []
+
+    mCurrentSafehouse: int = 0
+    mGarageId: list = []
+    mGarageVehicleId: list = []
+    mGarageCarRotForward: list = []
+    mGarageCarProof: list = []
 
     def __init__(self):
         pass
@@ -119,20 +126,20 @@ class SaveData:
         print(f"mSocialClubStamp: {self.mSocialClubStamp}")
 
     def load_code(self, sr: BinaryReader):
-        sr.position = 0x4D
+        sr.position = SAVE_CODE_OFFSET + 8
         self.mMoney = sr.readInt32()
         print(f"Money {self.mMoney}")
-        sr.position = 0xF5
+        sr.position = SAVE_CODE_OFFSET + 0xB0
         self.mHealth = sr.readInt8()
         print(f"Health: {self.mHealth}")
-        sr.position = 0xF6
+        sr.position = SAVE_CODE_OFFSET + 0xB1
         self.mArmor = sr.readInt8()
         print(f"Armor: {self.mArmor}")
 
         for i in range(0, 0xB):
-            sr.position = 0xf7 + i
+            sr.position = SAVE_CODE_OFFSET + 0xB2 + i
             typeValue = sr.readInt8()
-            sr.position = 0x63 + i * 2
+            sr.position = SAVE_CODE_OFFSET + 0x1E + i * 2
             ammoValue = sr.readInt16()
             typeName = str(typeValue)
             try:
@@ -143,21 +150,50 @@ class SaveData:
             self.mWeaponAmmos.append(ammoValue)
             print(f"{i} - type: {typeName} ammo: {ammoValue}")
 
+    def load_script(self, sr: BinaryReader):
+        sr.position = SAVE_SCRIPTS_OFFSET + 0x7A1
+        self.mCurrentSafehouse = sr.readInt8()
+        print(f"Current safehouse: {self.mCurrentSafehouse}")
+
+        for i in range(0, 21):
+            sr.position = SAVE_SCRIPTS_OFFSET + 0x773 + i
+            self.mGarageId.append(sr.readInt8());
+            sr.position = SAVE_SCRIPTS_OFFSET + 0x788 + i
+            self.mGarageVehicleId.append(sr.readInt8());
+            sr.position = SAVE_SCRIPTS_OFFSET + 0x7B6 + i
+            self.mGarageCarProof.append(sr.readBool());
+            sr.position = SAVE_SCRIPTS_OFFSET + 0x7CB + i
+            self.mGarageCarRotForward.append(sr.readBool());
+
     def patch_code(self, pf):
-        pf.seek(0x4D)
+        pf.seek(SAVE_CODE_OFFSET + 8)
         pf.write(struct.pack('i', self.mMoney))
-        pf.seek(0xF5)
+        pf.seek(SAVE_CODE_OFFSET + 0xB0)
         pf.write(struct.pack('b', self.mHealth))
-        pf.seek(0xF6)
+        pf.seek(SAVE_CODE_OFFSET + 0xB1)
         pf.write(struct.pack('b', self.mArmor))
 
         for i in range(0, 0xB):
-            pf.seek(0xf7 + i)
+            pf.seek(SAVE_CODE_OFFSET + 0xB2 + i)
             pf.write(struct.pack('b', self.mWeaponTypes[i]))
-            pf.seek(0x63 + i * 2)
+            pf.seek(SAVE_CODE_OFFSET + 0x1E + i * 2)
             pf.write(struct.pack('h', self.mWeaponAmmos[i]))
 
         pf.flush()
+
+    def patch_script(self, pf):
+        pf.seek(SAVE_SCRIPTS_OFFSET + 0x7A1)
+        pf.write(struct.pack('b', self.mCurrentSafehouse))
+
+        for i in range(0, 21):
+            pf.seek(SAVE_SCRIPTS_OFFSET + 0x773 + i)
+            pf.write(struct.pack('b', self.mGarageId[i]))
+            pf.seek(SAVE_SCRIPTS_OFFSET + 0x788 + i)
+            pf.write(struct.pack('b', self.mGarageVehicleId[i]))
+            pf.seek(SAVE_SCRIPTS_OFFSET + 0x7B6 + i)
+            pf.write(struct.pack('b', self.mGarageCarProof[i]))
+            pf.seek(SAVE_SCRIPTS_OFFSET + 0x7CB + i)
+            pf.write(struct.pack('b', self.mGarageCarRotForward[i]))
 
 def parse_save(slot: int) -> SaveData:
     backup = most_recent_backup()
@@ -174,6 +210,7 @@ def parse_save(slot: int) -> SaveData:
     reader = BinaryReader(file_bytes, True)
     savedata.load_header(reader)
     savedata.load_code(reader)
+    savedata.load_script(reader)
     print("Loaded!")
 
     return savedata;
@@ -195,6 +232,7 @@ def save_patched(slot: int, modified: SaveData) -> str:
     print("Applying patches...")
     with open(patchedfile, 'rb+') as pf:
         modified.patch_code(pf)
+        modified.patch_script(pf)
         print("Applied code patches!")
     print("Patched!")
     upload_patches()
