@@ -1,4 +1,3 @@
-from binaryreader import BinaryReader
 from datetime import datetime, timezone
 from gamedata.WeaponType import WeaponType
 import android
@@ -19,6 +18,49 @@ SAVE_STATS_OFFSET = SAVE_CODE_OFFSET + SAVE_CODE_SIZE
 SAVE_STATS_SIZE = 0x2A0
 SAVE_SCRIPTS_OFFSET = SAVE_STATS_OFFSET + SAVE_STATS_SIZE
 SAVE_SCRIPTS_SIZE = 0x938
+
+class StructReader:
+    def __init__(self, data: bytes, little_endian: bool = True):
+        self.data = data
+        self.position = 0
+        self.endian = "<" if little_endian else ">"
+
+    def _read(self, fmt: str):
+        fmt = self.endian + fmt
+        size = struct.calcsize(fmt)
+
+        if self.position + size > len(self.data):
+            raise EOFError("Tried to read past the end of the save file.")
+
+        value = struct.unpack_from(fmt, self.data, self.position)[0]
+        self.position += size
+        return value
+
+    def readInt8(self) -> int:
+        return self._read("b")
+
+    def readInt16(self) -> int:
+        return self._read("h")
+
+    def readInt32(self) -> int:
+        return self._read("i")
+
+    def readBool(self) -> bool:
+        return self._read("?")
+
+    def readStringC(self, encoding: str = "utf-8") -> str:
+        end = self.data.find(b"\x00", self.position)
+
+        if end == -1:
+            end = len(self.data)
+            string_bytes = self.data[self.position:end]
+            self.position = end
+        else:
+            string_bytes = self.data[self.position:end]
+            self.position = end + 1
+
+        return string_bytes.decode(encoding, errors="replace")
+
 
 def has_backups() -> bool:
     return os.path.exists(backups_dir)
@@ -115,9 +157,15 @@ class SaveData:
     mGarageCarProof: list = []
 
     def __init__(self):
-        pass
+        self.mWeaponTypes = []
+        self.mWeaponAmmos = []
 
-    def load_header(self, sr: BinaryReader):
+        self.mGarageId = []
+        self.mGarageVehicleId = []
+        self.mGarageCarRotForward = []
+        self.mGarageCarProof = []
+
+    def load_header(self, sr: StructReader):
         sr.position = SAVE_HEADER_OFFSET + 8
         self.mVersionStr = sr.readStringC()
         print(f"mVersionStr: '{self.mVersionStr}'")
@@ -125,7 +173,7 @@ class SaveData:
         self.mSocialClubStamp = sr.readInt32()
         print(f"mSocialClubStamp: {self.mSocialClubStamp}")
 
-    def load_code(self, sr: BinaryReader):
+    def load_code(self, sr: StructReader):
         sr.position = SAVE_CODE_OFFSET + 8
         self.mMoney = sr.readInt32()
         print(f"Money {self.mMoney}")
@@ -150,7 +198,7 @@ class SaveData:
             self.mWeaponAmmos.append(ammoValue)
             print(f"{i} - type: {typeName} ammo: {ammoValue}")
 
-    def load_script(self, sr: BinaryReader):
+    def load_script(self, sr: StructReader):
         sr.position = SAVE_SCRIPTS_OFFSET + 0x7A1
         self.mCurrentSafehouse = sr.readInt8()
         print(f"Current safehouse: {self.mCurrentSafehouse}")
@@ -167,7 +215,7 @@ class SaveData:
 
     def patch_code(self, pf):
         pf.seek(SAVE_CODE_OFFSET + 8)
-        pf.write(struct.pack('i', self.mMoney))
+        pf.write(struct.pack('<i', self.mMoney))
         pf.seek(SAVE_CODE_OFFSET + 0xB0)
         pf.write(struct.pack('b', self.mHealth))
         pf.seek(SAVE_CODE_OFFSET + 0xB1)
@@ -177,7 +225,7 @@ class SaveData:
             pf.seek(SAVE_CODE_OFFSET + 0xB2 + i)
             pf.write(struct.pack('b', self.mWeaponTypes[i]))
             pf.seek(SAVE_CODE_OFFSET + 0x1E + i * 2)
-            pf.write(struct.pack('h', self.mWeaponAmmos[i]))
+            pf.write(struct.pack('<h', self.mWeaponAmmos[i]))
 
         pf.flush()
 
@@ -207,7 +255,7 @@ def parse_save(slot: int) -> SaveData:
         file_bytes = sf.read()
     print(f"Read {len(file_bytes)} bytes")
     print("Parsing save data...")
-    reader = BinaryReader(file_bytes, True)
+    reader = StructReader(file_bytes, True)
     savedata.load_header(reader)
     savedata.load_code(reader)
     savedata.load_script(reader)
